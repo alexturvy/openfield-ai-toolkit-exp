@@ -1,0 +1,10 @@
+User Research Session Notes - Product Feedback
+Date: March 15, 2024
+
+Participant A mentioned that they love the visual design but struggle with the information architecture. They spend too much time hunting for features.
+
+Participant B (power user) has created their own workarounds for the navigation issues. Uses bookmarks extensively to bypass the menu system.
+
+Key observation: Multiple users independently mentioned the same pain points around navigation and search functionality. This seems to be a critical issue affecting user satisfaction.
+
+Follow-up needed: Consider card sorting exercise to better understand user mental models for navigation.

@@ -1,0 +1,38 @@
+# Core dependencies
+python-docx>=0.8.11,<1.0.0
+PyPDF2>=3.0.1,<4.0.0
+striprtf>=0.0.26,<1.0.0
+tqdm>=4.66.1,<5.0.0
+rich>=13.7.0,<14.0.0
+humanize>=4.9.0,<5.0.0
+requests>=2.31.0,<3.0.0  # For Ollama API calls
+
+# File type detection
+# Note: On macOS/Linux, install libmagic via system package manager
+# On Windows, use python-magic-bin
+python-magic>=0.4.27,<1.0.0; sys_platform != 'win32'
+python-magic-bin>=0.4.14,<1.0.0; sys_platform == 'win32'
+
+# Analysis dependencies
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch>=2.2.0
+sentence-transformers>=2.5.1,<3.0.0
+numpy>=1.26.0,<2.0.0
+
+# Clustering dependencies
+umap-learn>=0.5.5,<1.0.0  # The package is called umap-learn but imported as umap
+hdbscan>=0.8.33,<1.0.0
+scikit-learn>=1.4.0,<1.6.0  # Pin to avoid deprecation warnings
+
+# Optional commercial model support
+openai>=1.0.0,<2.0.0  # For faster synthesis with OpenAI (optional)
+
+# System utilities
+psutil>=5.9.0,<6.0.0  # For process management in OllamaManager
+
+# Vector database for memory vault (future)
+faiss-cpu>=1.7.4,<2.0.0  # CPU version of FAISS for vector similarity
+
+# Testing dependencies
+pytest>=7.4.0,<8.0.0  # For running tests
+pytest-cov>=4.1.0,<5.0.0  # For coverage reporting
