@@ -8,8 +8,8 @@ from .documents.handlers import get_handler_for_path
 from .analysis.synthesis import ThemeSynthesizer
 
 # Reuse existing embedding + clustering
-from ..insight_synthesizer.analysis.embeddings import generate_embeddings
-from ..insight_synthesizer.analysis.clustering import perform_clustering
+from insight_synthesizer.analysis.embeddings import generate_embeddings
+from insight_synthesizer.analysis.clustering import perform_clustering
 
 
 class Pipeline:

@@ -4,12 +4,17 @@ from typing import List, Optional
 
 from ..models import Chunk, Theme, ResearchPlan, AnalysisLens
 from ..prompts import PromptRegistry
-from ...insight_synthesizer.llm.client import get_llm_client
+from insight_synthesizer.llm.client import get_llm_client
 
 
 class ThemeSynthesizer:
     def __init__(self):
-        self.llm = get_llm_client()
+        self._llm = None
+
+    def _llm_client(self):
+        if self._llm is None:
+            self._llm = get_llm_client()
+        return self._llm
 
     def synthesize_for_lenses(self, clusters: List[List[Chunk]], research_plan: ResearchPlan) -> List[Theme]:
         themes: List[Theme] = []
@@ -32,7 +37,7 @@ class ThemeSynthesizer:
         )
         prompt = PromptRegistry.with_lens_guidance(base_prompt, lens.value)
 
-        ok, data = self.llm.generate_json(prompt)
+        ok, data = self._llm_client().generate_json(prompt)
         if not ok:
             return None
 
