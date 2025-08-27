@@ -10,6 +10,8 @@ from insight_synthesizer.validation.theme_validator import ThemeValidator
 from .reports.generator import ReportGenerator
 from .config import PipelineConfig
 from insight_synthesizer.utils.progress_manager import get_progress_manager, ProgressStage
+from .research.plan_parser import ResearchPlanParser
+from .analysis.tensions_adapter import detect_tensions_from_clean
 
 # Reuse existing embedding + clustering
 from insight_synthesizer.analysis.embeddings import generate_embeddings
@@ -23,6 +25,7 @@ class Pipeline:
         self.validator = ThemeValidator()
         self.reporter = ReportGenerator()
         self.progress = get_progress_manager()
+        self.plan_parser = ResearchPlanParser()
 
     def run(self, research_plan_path: Path, document_paths: List[Path]) -> Report:
         self.progress.start_pipeline(total_stages=7)
@@ -38,22 +41,23 @@ class Pipeline:
             themes = self.synthesizer.synthesize_for_lenses(cluster_lists, plan)
         with self.progress.stage_context(ProgressStage.VALIDATION, len(themes), "Validating with quotes"):
             validation = self._validate_themes(themes, document_paths)
+        # Tension analysis (reuses legacy function)
+        tensions: List[dict] = []
+        try:
+            legacy_theme_dicts = [{
+                'theme_name': t.name,
+                'summary': t.summary,
+            } for t in themes]
+            tensions = detect_tensions_from_clean(legacy_theme_dicts)
+        except Exception:
+            tensions = []
         with self.progress.stage_context(ProgressStage.REPORT_GENERATION, 1, "Generating report"):
             report = self.reporter.generate(plan, themes, validation)
         self.progress.finish()
         return report
 
     def _parse_research_plan(self, path: Path) -> ResearchPlan:
-        content = path.read_text(encoding="utf-8", errors="ignore")
-        # naive parse: lines starting with "- " are questions
-        questions: List[str] = [ln[2:].strip() for ln in content.splitlines() if ln.strip().startswith("- ")]
-        if not questions:
-            questions = [ln.strip() for ln in content.splitlines() if ln.strip()]
-            questions = questions[:3]
-
-        # default: analyze across all lenses
-        lenses = [l for l in AnalysisLens]
-        return ResearchPlan(questions=questions, target_lenses=lenses)
+        return self.plan_parser.parse(path)
 
     def _load_and_chunk_documents(self, paths: List[Path]) -> List[Chunk]:
         chunks: List[Chunk] = []

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Protocol
 
 from ..models import Document, Chunk, DocumentType
+from .chunking import classify_document, chunk_by_paragraphs, chunk_speaker_turns
 
 
 class DocumentHandler(Protocol):
@@ -23,24 +24,15 @@ class InterviewTranscriptHandler:
 
     def load(self, path: Path) -> Document:
         content = path.read_text(encoding="utf-8", errors="ignore")
-        return Document(path=path, content=content, doc_type=DocumentType.INTERVIEW_TRANSCRIPT)
+        dtype = classify_document(content)
+        if dtype is DocumentType.UNKNOWN:
+            dtype = DocumentType.INTERVIEW_TRANSCRIPT
+        return Document(path=path, content=content, doc_type=dtype)
 
     def chunk(self, document: Document) -> List[Chunk]:
-        # Naive speaker-turn chunking: split on blank lines; attach no speaker for now
-        paragraphs = [p.strip() for p in document.content.split("\n\n") if p.strip()]
-        chunks: List[Chunk] = []
-        for i, para in enumerate(paragraphs):
-            if len(para) < 80:
-                continue
-            chunks.append(
-                Chunk(
-                    text=para,
-                    source=document,
-                    chunk_type="speaker_turn",
-                    metadata={"paragraph_index": i},
-                )
-            )
-        return chunks
+        if document.doc_type is DocumentType.INTERVIEW_TRANSCRIPT:
+            return chunk_speaker_turns(document)
+        return chunk_by_paragraphs(document)
 
 
 class NotesHandler:
@@ -49,23 +41,13 @@ class NotesHandler:
 
     def load(self, path: Path) -> Document:
         content = path.read_text(encoding="utf-8", errors="ignore")
-        return Document(path=path, content=content, doc_type=DocumentType.MEETING_NOTES)
+        dtype = classify_document(content)
+        if dtype is DocumentType.UNKNOWN:
+            dtype = DocumentType.MEETING_NOTES
+        return Document(path=path, content=content, doc_type=dtype)
 
     def chunk(self, document: Document) -> List[Chunk]:
-        paragraphs = [p.strip() for p in document.content.split("\n\n") if p.strip()]
-        chunks: List[Chunk] = []
-        for i, para in enumerate(paragraphs):
-            if len(para) < 100:
-                continue
-            chunks.append(
-                Chunk(
-                    text=para,
-                    source=document,
-                    chunk_type="paragraph",
-                    metadata={"paragraph_index": i},
-                )
-            )
-        return chunks
+        return chunk_by_paragraphs(document)
 
 
 DOCUMENT_HANDLERS: List[DocumentHandler] = [

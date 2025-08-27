@@ -20,12 +20,12 @@ class ProcessingConfig:
 
 @dataclass
 class PipelineConfig:
-    llm: LLMConfig = LLMConfig()
-    processing: ProcessingConfig = ProcessingConfig()
+    llm: LLMConfig = None  # type: ignore[assignment]
+    processing: ProcessingConfig = None  # type: ignore[assignment]
 
     @classmethod
     def from_env(cls) -> "PipelineConfig":
-        cfg = cls()
+        cfg = cls(llm=LLMConfig(), processing=ProcessingConfig())
         cfg.llm.provider = os.getenv("LLM_PROVIDER", cfg.llm.provider)
         cfg.llm.model = os.getenv("LLM_MODEL", cfg.llm.model)
         t = os.getenv("LLM_TEMPERATURE")
