@@ -22,47 +22,17 @@ def get_min_cluster_size(n_samples: int) -> int:
 
 
 def get_adaptive_clustering_params(n_samples: int) -> dict:
-    """
-    Get clustering parameters adapted to dataset size.
-    
-    This is an improved version that handles edge cases better.
-    
-    Args:
-        n_samples: Number of samples to cluster
-        
-    Returns:
-        Dictionary of HDBSCAN parameters optimized for the dataset size
-    """
-    
-    if n_samples < 5:
-        # Very small datasets - use leaf clustering method
-        return {
-            'min_cluster_size': 2,
-            'min_samples': 1,
-            'cluster_selection_method': 'leaf',  # More aggressive clustering
-            'metric': 'euclidean'
-        }
-    elif n_samples < 20:
-        # Small datasets
-        return {
-            'min_cluster_size': min(3, n_samples // 3),
-            'min_samples': 2,
-            'cluster_selection_method': 'eom',
-            'metric': 'euclidean'
-        }
-    elif n_samples < 50:
-        # Medium datasets
-        return {
-            'min_cluster_size': min(5, n_samples // 8),
-            'min_samples': 3,
-            'cluster_selection_method': 'eom',
-            'metric': 'euclidean'
-        }
+    """Return HDBSCAN params tuned to encourage 5-10 meaningful themes."""
+    if n_samples < 50:
+        min_size = 3
+    elif n_samples < 200:
+        min_size = 5
     else:
-        # Large datasets
-        return {
-            'min_cluster_size': min(10, n_samples // 10),
-            'min_samples': 5,
-            'cluster_selection_method': 'eom',
-            'metric': 'euclidean'
-        }
+        min_size = 7
+
+    return {
+        'min_cluster_size': min_size,
+        'min_samples': 2,
+        'cluster_selection_method': 'eom',
+        'metric': 'euclidean'
+    }

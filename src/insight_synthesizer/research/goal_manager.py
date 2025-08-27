@@ -5,7 +5,12 @@ from typing import List, Dict, Optional, Tuple
 import numpy as np
 import logging
 from sentence_transformers import SentenceTransformer
-from rich.console import Console
+try:
+    from rich.console import Console
+except Exception:
+    class Console:
+        def print(self, *args, **kwargs):
+            pass
 from .plan_parser import ParsedResearchPlan
 
 console = Console()
@@ -128,7 +133,7 @@ class ResearchGoalManager:
         
         console.print(f"[green]Research goal manager initialized with {len(self._questions)} questions[/]")
         
-    def _generate_question_embeddings(self) -> np.ndarray:
+    def _generate_question_embeddings(self) -> "np.ndarray":
         """Generate embeddings for all research questions."""
         all_questions = self._questions.copy()
         

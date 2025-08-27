@@ -82,29 +82,31 @@ SPEAKER DISTRIBUTION IN THIS CLUSTER:
         
         if relevant_questions:
             primary_question = goal_manager._questions[relevant_questions[0][0]]
-            prompt = f"""Analyze instructor responses about NeuroQuest that relate to this research question:
+            prompt = f"""You are a UX researcher. Your task is to extract the key findings from the following user quotes that directly answer the research question provided.
 
 RESEARCH QUESTION: {primary_question}
 
-INSTRUCTOR RESPONSES:
+{speaker_context}QUOTES:
 {chr(10).join(quotes_with_speakers)}
 
-Extract:
-1. How instructors answer this specific question (be specific, not generic)
-2. The range of opinions (consensus vs. divergent views)  
-3. Specific concerns or suggestions mentioned
-4. Direct quotes that best support your analysis
-
-Return JSON with:
+Return ONLY valid JSON with this exact structure:
 {{
-    "theme_name": "Specific answer to: {primary_question[:50]}...",
-    "summary": "How instructors specifically answer this research question",
-    "key_insights": ["Specific finding 1", "Specific finding 2", "Specific finding 3"],
-    "addressed_questions": [{relevant_questions[0][0]}],
-    "consensus_level": "strong/mixed/weak",
-    "direct_quotes": ["Actual instructor quote 1", "Actual instructor quote 2"],
-    "actionable_findings": ["Specific recommendation based on responses"]
-}}"""
+  "theme_name": "A concise, actionable theme name that answers the research question",
+  "findings": [
+    {{
+      "finding": "A specific, granular finding that directly answers the research question.",
+      "speaker": "The speaker who expressed this finding.",
+      "supporting_quote": "The exact, verbatim quote from the 'QUOTES' section that supports this finding."
+    }}
+  ]
+}}
+
+Rules:
+- Each 'finding' must directly address the research question.
+- The 'speaker' must be one of the speakers listed in the quotes.
+- The 'supporting_quote' must be an exact quote from the provided text.
+- If there are multiple distinct findings, create a separate object for each in the 'findings' array.
+"""
         else:
             # This cluster doesn't map to research questions - skip it
             return None
@@ -145,37 +147,20 @@ Be specific and evidence-based. Focus on patterns and insights from the data."""
     if not success:
         raise ValueError(f"Synthesis failed: {synthesis.get('error', 'Unknown error')}")
     
-    # Simple validation - check for core fields
-    required_keys = ['theme_name', 'summary', 'key_insights']
-    if all(key in synthesis for key in required_keys):
-        # Add speaker distribution data from our analysis if LLM didn't provide it
+    # Validation: accept new extractive schema or legacy schema
+    if 'theme_name' in synthesis and 'findings' in synthesis and isinstance(synthesis['findings'], list):
+        return synthesis
+    legacy_required = ['theme_name', 'summary', 'key_insights']
+    if all(key in synthesis for key in legacy_required):
         if 'speaker_distribution' not in synthesis:
             synthesis['speaker_distribution'] = speaker_distribution
-        
-        # Ensure these fields exist for backward compatibility
         if 'primary_contributors' not in synthesis:
-            # Ensure it's a proper list of strings
             contributors = list(speaker_distribution.keys()) if speaker_distribution else []
-            # Take only top 3 contributors as strings
             synthesis['primary_contributors'] = [str(c) for c in contributors[:3]]
-        
         if 'cross_speaker_patterns' not in synthesis:
             synthesis['cross_speaker_patterns'] = "Multiple speakers contributed to this theme" if len(speaker_distribution) > 1 else "Single speaker theme"
-        
-        # Add default values for research-specific fields if using goal_manager
-        if goal_manager:
-            if 'addressed_questions' not in synthesis:
-                synthesis['addressed_questions'] = []
-            if 'research_implications' not in synthesis:
-                synthesis['research_implications'] = "No specific implications identified"
-            if 'confidence' not in synthesis:
-                synthesis['confidence'] = "medium"
-            if 'actionable_findings' not in synthesis:
-                synthesis['actionable_findings'] = []
-        
         return synthesis
-    else:
-        raise ValueError(f"Missing required keys: {required_keys}")
+    raise ValueError("Missing required keys for synthesis output")
 
 
 # Legacy function name for compatibility

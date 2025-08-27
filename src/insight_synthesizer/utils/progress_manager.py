@@ -4,20 +4,90 @@ from typing import Dict, Optional, Any, List
 import time
 from contextlib import contextmanager
 from rich.console import Console
-from rich.progress import (
-    Progress, 
-    TextColumn, 
-    BarColumn, 
-    TaskProgressColumn, 
-    TimeRemainingColumn,
-    SpinnerColumn,
-    MofNCompleteColumn,
-    TimeElapsedColumn
-)
-from rich.live import Live
-from rich.layout import Layout
+try:
+    from rich.progress import (
+        Progress,
+        TextColumn,
+        BarColumn,
+        TaskProgressColumn,
+        TimeRemainingColumn,
+        SpinnerColumn,
+        MofNCompleteColumn,
+        TimeElapsedColumn,
+    )
+except Exception:  # Fallback minimal stubs
+    class _Task:
+        def __init__(self, total: int):
+            self.total = total
+            self.completed = 0
+
+    class Progress:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            self.tasks: List[_Task] = []
+        def start(self) -> None:
+            pass
+        def stop(self) -> None:
+            pass
+        def add_task(self, description: str, total: int) -> int:
+            self.tasks.append(_Task(total))
+            return len(self.tasks) - 1
+        def update(self, task_id: int, description: Optional[str] = None, total: Optional[int] = None, completed: Optional[int] = None) -> None:
+            task = self.tasks[task_id]
+            if completed is not None:
+                task.completed = min(completed, task.total)
+        def advance(self, task_id: int, advance: int = 1) -> None:
+            task = self.tasks[task_id]
+            task.completed = min(task.completed + advance, task.total)
+
+    # Column stubs for constructor compatibility
+    class TextColumn:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+    class BarColumn:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+    class TaskProgressColumn:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+    class TimeRemainingColumn:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+    class SpinnerColumn:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+    class MofNCompleteColumn:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+    class TimeElapsedColumn:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            pass
+try:
+    from rich.live import Live
+except Exception:
+    class Live:  # Minimal stub
+        def __init__(self, *args, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc, tb):
+            return False
+try:
+    from rich.layout import Layout
+except Exception:
+    class Layout:  # Minimal stub
+        def __init__(self, *args, **kwargs):
+            pass
 from rich.panel import Panel
-from rich.text import Text
+try:
+    from rich.text import Text
+except Exception:
+    class Text:  # Minimal stub
+        def __init__(self):
+            self._parts: List[str] = []
+        def append(self, text: str, style: Optional[str] = None) -> None:
+            self._parts.append(str(text))
+        def __str__(self) -> str:
+            return "".join(self._parts)
 from dataclasses import dataclass
 from enum import Enum
 

@@ -6,7 +6,21 @@ from typing import Set
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich.prompt import Prompt
+try:
+    from rich.prompt import Prompt
+except Exception:
+    class Prompt:  # Minimal fallback
+        @staticmethod
+        def ask(prompt: str, choices: list | None = None, default: str | None = None, show_default: bool = True):
+            console = Console()
+            if choices:
+                prompt = f"{prompt} ({'/'.join(choices)})"
+            if default is not None and show_default:
+                prompt = f"{prompt} [{default}]"
+            value = console.input(f"{prompt}: ")
+            if not value and default is not None:
+                value = default
+            return value
 
 from .pipeline import InsightSynthesizer
 from .config import ANALYSIS_LENSES

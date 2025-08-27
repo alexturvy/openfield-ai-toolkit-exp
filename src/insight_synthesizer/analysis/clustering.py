@@ -38,7 +38,7 @@ def perform_clustering(chunks: List, progress_reporter: Optional[ProgressReporte
     """
     # Filter out conversational noise before clustering
     original_chunks = chunks
-    chunks = [c for c in chunks if hasattr(c, 'text') and len(str(c.text).split()) > 10 and not re.match(r'^(yeah|yes|okay|sure|right|mhm|um|uh|thanks?|great|perfect)\.?$', str(c.text).strip(), re.I)]
+    chunks = [c for c in chunks if hasattr(c, 'text') and len(str(c.text).split()) > 15 and not re.match(r'^(yeah|yes|okay|sure|right|mhm|um|uh|thanks?|great|perfect)\.?$', str(c.text).strip(), re.I)]
     if progress_manager:
         from ..utils.progress_manager import ProgressStage
         removed = len(original_chunks) - len(chunks)

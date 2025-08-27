@@ -5,8 +5,27 @@ from dataclasses import dataclass
 from enum import Enum
 from rich.console import Console
 from rich.panel import Panel
-from rich.tree import Tree
-from rich.text import Text
+try:
+    from rich.tree import Tree
+    from rich.text import Text
+except Exception:  # Fallback if specific rich submodules are unavailable
+    class Text:  # Minimal stub supporting append and str rendering
+        def __init__(self):
+            self._parts: List[str] = []
+        def append(self, text: str, style: Optional[str] = None) -> None:
+            self._parts.append(str(text))
+        def __str__(self) -> str:
+            return "".join(self._parts)
+
+    class Tree:  # Minimal stub with add chaining
+        def __init__(self, label: str):
+            self.label = str(label)
+            self.children: List[str] = []
+        def add(self, text: str):
+            self.children.append(str(text))
+            return self
+        def __str__(self) -> str:
+            return self.label + "\n" + "\n".join(self.children)
 
 console = Console()
 

@@ -21,8 +21,8 @@ class ResearchAwareClusterer:
     """Clustering that balances semantic similarity with research relevance."""
     
     def __init__(self, goal_manager: ResearchGoalManager,
-                 semantic_weight: float = 0.7,
-                 research_weight: float = 0.3,
+                 semantic_weight: float = 0.3,
+                 research_weight: float = 0.7,
                  progress_reporter: Optional[ProgressReporter] = None):
         """
         Initialize research-aware clusterer.

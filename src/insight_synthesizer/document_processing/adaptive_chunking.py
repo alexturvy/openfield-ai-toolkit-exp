@@ -128,58 +128,51 @@ class AdaptiveChunker:
                 best_matches = matches
         
         if best_matches:
-            # Process speaker turns but keep Q&A pairs together
-            i = 0
-            while i < len(best_matches):
-                speaker, content = best_matches[i]
+            # Group contiguous blocks from the same speaker into full turns
+            processed_turns = []
+            current_speaker = None
+            current_content_parts = []
+
+            for speaker, content in best_matches:
                 content = content.strip()
-                if len(content) == 0:
-                    i += 1
+                if not content:
                     continue
-                # Normalize ellipses and whitespace
+                # Normalize ellipses and excessive whitespace inside turns
                 content = re.sub(r'\s*\.\.\.\s*', ' ', content)
-                
-                # If this looks like an interviewer question, pair with the following answers
-                if self._is_interviewer(speaker) and '?' in content:
-                    combined_text = f"Q: {content}\n"
-                    respondent = None
-                    i += 1
-                    
-                    while i < len(best_matches):
-                        next_speaker, next_content = best_matches[i]
-                        next_content = next_content.strip()
-                        if self._is_interviewer(next_speaker) and '?' in next_content:
-                            break  # next question begins
-                        if len(next_content) > 0:
-                            combined_text += f"A: {next_content}\n"
-                            respondent = next_speaker
-                        i += 1
-                    
-                    chunks.append(AdaptiveChunk(
-                        text=combined_text,
-                        source_file=file_path,
-                        chunk_type="qa_pair",
-                        metadata={
-                            "interviewer": self._clean_speaker_name(speaker),
-                            "respondent": self._clean_speaker_name(respondent) if respondent else "Unknown",
-                            "is_interviewer": False,  # treat as research content
-                            "content_type": "dialogue"
-                        }
-                    ))
+
+                if current_speaker is None:
+                    current_speaker = speaker
+                    current_content_parts = [content]
+                elif self._clean_speaker_name(speaker) == self._clean_speaker_name(current_speaker):
+                    # Same speaker continues; append content
+                    current_content_parts.append(content)
                 else:
-                    # For non-Q&A content, only keep if substantial to reduce noise
-                    if len(content.split()) > 20:
-                        chunks.append(AdaptiveChunk(
-                            text=content,
-                            source_file=file_path,
-                            chunk_type="speaker_turn",
-                            metadata={
-                                "speaker": self._clean_speaker_name(speaker),
-                                "is_interviewer": self._is_interviewer(speaker),
-                                "content_type": "dialogue"
-                            }
-                        ))
-                    i += 1
+                    # Speaker changed; finalize previous turn
+                    combined = "\n\n".join(part for part in current_content_parts if part)
+                    if combined:
+                        processed_turns.append((current_speaker, combined))
+                    # Start new turn
+                    current_speaker = speaker
+                    current_content_parts = [content]
+
+            # Flush the last accumulated turn
+            if current_content_parts:
+                combined = "\n\n".join(part for part in current_content_parts if part)
+                if combined:
+                    processed_turns.append((current_speaker, combined))
+
+            # Create chunks from processed turns so each chunk is a full uninterrupted response
+            for speaker, combined_text in processed_turns:
+                chunks.append(AdaptiveChunk(
+                    text=combined_text,
+                    source_file=file_path,
+                    chunk_type="speaker_turn",
+                    metadata={
+                        "speaker": self._clean_speaker_name(speaker),
+                        "is_interviewer": self._is_interviewer(speaker),
+                        "content_type": "dialogue"
+                    }
+                ))
         else:
             # Fallback if no speaker patterns found
             return self._chunk_by_sentences(text, file_path, classification)
