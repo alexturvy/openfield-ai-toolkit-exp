@@ -7,6 +7,9 @@ from .models import ResearchPlan, Document, Chunk, Theme, Report, AnalysisLens
 from .documents.handlers import get_handler_for_path
 from .analysis.synthesis import ThemeSynthesizer
 from insight_synthesizer.validation.theme_validator import ThemeValidator
+from .reports.generator import ReportGenerator
+from .config import PipelineConfig
+from insight_synthesizer.utils.progress_manager import get_progress_manager, ProgressStage
 
 # Reuse existing embedding + clustering
 from insight_synthesizer.analysis.embeddings import generate_embeddings
@@ -14,20 +17,30 @@ from insight_synthesizer.analysis.clustering import perform_clustering
 
 
 class Pipeline:
-    def __init__(self):
+    def __init__(self, config: PipelineConfig | None = None):
+        self.config = config or PipelineConfig.from_env()
         self.synthesizer = ThemeSynthesizer()
         self.validator = ThemeValidator()
+        self.reporter = ReportGenerator()
+        self.progress = get_progress_manager()
 
     def run(self, research_plan_path: Path, document_paths: List[Path]) -> Report:
+        self.progress.start_pipeline(total_stages=7)
         plan = self._parse_research_plan(research_plan_path)
-        chunks = self._load_and_chunk_documents(document_paths)
-        chunks = generate_embeddings(chunks)
-        chunks, clusters = perform_clustering(chunks)
+        with self.progress.stage_context(ProgressStage.DOCUMENT_PROCESSING, len(document_paths), "Chunking documents"):
+            chunks = self._load_and_chunk_documents(document_paths)
+        with self.progress.stage_context(ProgressStage.EMBEDDING_GENERATION, len(chunks), "Generating embeddings"):
+            chunks = generate_embeddings(chunks, progress_manager=self.progress)
+        with self.progress.stage_context(ProgressStage.CLUSTERING, 1, "Clustering chunks"):
+            chunks, clusters = perform_clustering(chunks, progress_manager=self.progress)
         cluster_lists: List[List[Chunk]] = [c.chunks for c in clusters]
-        themes = self.synthesizer.synthesize_for_lenses(cluster_lists, plan)
-        # Validate themes against original documents
-        validation = self._validate_themes(themes, document_paths)
-        report = self._generate_report(plan, themes, validation)
+        with self.progress.stage_context(ProgressStage.INSIGHT_SYNTHESIS, len(cluster_lists), "Synthesizing themes"):
+            themes = self.synthesizer.synthesize_for_lenses(cluster_lists, plan)
+        with self.progress.stage_context(ProgressStage.VALIDATION, len(themes), "Validating with quotes"):
+            validation = self._validate_themes(themes, document_paths)
+        with self.progress.stage_context(ProgressStage.REPORT_GENERATION, 1, "Generating report"):
+            report = self.reporter.generate(plan, themes, validation)
+        self.progress.finish()
         return report
 
     def _parse_research_plan(self, path: Path) -> ResearchPlan:
@@ -63,33 +76,5 @@ class Pipeline:
             })
         return self.validator.validate_themes(theme_dicts, paths)
 
-    def _generate_report(self, plan: ResearchPlan, themes: List[Theme], validation) -> Report:
-        # very simple markdown for now
-        md_lines: List[str] = []
-        md_lines.append("# Insight Report")
-        md_lines.append("")
-        md_lines.append("## Research Questions")
-        for i, q in enumerate(plan.questions):
-            md_lines.append(f"- ({i}) {q}")
-        md_lines.append("")
-        md_lines.append("## Themes")
-        for t in themes:
-            md_lines.append(f"### {t.name} [{t.primary_lens.value}] ({t.confidence:.2f})")
-            md_lines.append(t.summary)
-            md_lines.append("")
-
-        # Validation summary
-        md_lines.append("## Validation")
-        md_lines.append(validation.validation_summary)
-        md_lines.append("")
-
-        markdown = "\n".join(md_lines)
-        coverage = {"num_themes": len(themes), "overall_quality": getattr(validation, 'overall_quality', 'unknown')}
-        return Report(
-            research_plan=plan,
-            themes=themes,
-            coverage_analysis=coverage,
-            tensions=[],
-            markdown=markdown,
-        )
+    # report generation handled by ReportGenerator
 
