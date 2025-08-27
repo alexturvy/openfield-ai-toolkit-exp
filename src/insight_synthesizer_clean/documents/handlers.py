@@ -60,5 +60,6 @@ def get_handler_for_path(path: Path) -> DocumentHandler:
     for handler in DOCUMENT_HANDLERS:
         if handler.can_handle(path):
             return handler
-    raise ValueError(f"No handler found for {path}")
+    # Fallback: treat as notes
+    return NotesHandler()
 

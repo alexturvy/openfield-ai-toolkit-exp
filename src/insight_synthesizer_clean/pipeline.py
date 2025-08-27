@@ -52,7 +52,7 @@ class Pipeline:
         except Exception:
             tensions = []
         with self.progress.stage_context(ProgressStage.REPORT_GENERATION, 1, "Generating report"):
-            report = self.reporter.generate(plan, themes, validation)
+            report = self.reporter.generate(plan, themes, validation, tensions)
         self.progress.finish()
         return report
 

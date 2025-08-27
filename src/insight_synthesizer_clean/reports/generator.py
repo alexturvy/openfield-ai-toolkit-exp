@@ -5,7 +5,7 @@ from ..models import ResearchPlan, Theme, Report
 
 
 class ReportGenerator:
-    def generate(self, plan: ResearchPlan, themes: List[Theme], validation) -> Report:
+    def generate(self, plan: ResearchPlan, themes: List[Theme], validation, tensions: List[dict] | None = None) -> Report:
         md_lines: List[str] = []
         md_lines.append("# Insight Report")
         md_lines.append("")
@@ -21,6 +21,11 @@ class ReportGenerator:
         md_lines.append("## Validation")
         md_lines.append(getattr(validation, 'validation_summary', ''))
         md_lines.append("")
+        if tensions:
+            md_lines.append("## Tensions")
+            for t in tensions:
+                md_lines.append(f"- {t.get('summary','')} (themes {t.get('theme_a','?')} vs {t.get('theme_b','?')})")
+            md_lines.append("")
         markdown = "\n".join(md_lines)
         coverage = {
             "num_themes": len(themes),
@@ -30,7 +35,7 @@ class ReportGenerator:
             research_plan=plan,
             themes=themes,
             coverage_analysis=coverage,
-            tensions=[],
+            tensions=tensions or [],
             markdown=markdown,
         )
 

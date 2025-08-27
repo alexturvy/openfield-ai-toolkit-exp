@@ -22,7 +22,8 @@ def main(research_plan: Path, documents: Path, pattern: str, output: Path, lense
 	else:
 		cfg = PipelineConfig.from_env()
 	pipe = Pipeline(cfg)
-	# Lenses are parsed inside pipeline via plan; future: override plan target_lenses via CLI
+	# Lenses override (optional)
+	# For now, we keep default (all) to preserve multi-lens behavior
 	doc_paths = sorted(documents.glob(pattern))
 	report = pipe.run(research_plan, doc_paths)
 	output.write_text(report.markdown, encoding="utf-8")
