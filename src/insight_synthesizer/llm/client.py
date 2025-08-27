@@ -93,14 +93,27 @@ class UnifiedLLMClient:
             
             self.client = OpenAI(api_key=api_key)
             self.provider = 'openai'
-            self.model = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+            # Normalize model env to avoid smart quotes / stray characters from copy-paste
+            self.model = self._normalize_env_string(os.environ.get('OPENAI_MODEL', 'gpt-4o-mini'))
             
             # Test the connection
-            test_response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": "Say 'ok'"}],
-                max_tokens=5
-            )
+            try:
+                # Use an ASCII-only, minimal test prompt to avoid locale/encoding issues
+                test_response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": "ok"}],
+                    max_tokens=5
+                )
+            except UnicodeEncodeError as ue:
+                # Gracefully handle terminals/shells with non-UTF-8 locales or smart-quote env values
+                console.print(
+                    "[yellow]OpenAI test call hit a Unicode encoding issue; assuming client is available.\n"
+                    "Hint: ensure your shell uses UTF-8 (e.g., export LC_ALL=en_US.UTF-8; export LANG=en_US.UTF-8)\n"
+                    "and avoid smart quotes in OPENAI_MODEL.[/]"
+                )
+                # Consider initialization successful despite test-call encoding error
+                console.print(f"[green]✓ Using OpenAI ({self.model})[/]")
+                return True
             
             console.print(f"[green]✓ Using OpenAI ({self.model})[/]")
             return True
@@ -148,12 +161,14 @@ class UnifiedLLMClient:
                 text=True
             )
             
-            if 'mistral' not in result.stdout:
-                console.print("[yellow]Pulling Mistral model (this may take a minute)...[/]")
-                subprocess.run(['ollama', 'pull', 'mistral'], check=True)
+            # Allow overriding the local model via env; default to mistral
+            model_name = os.environ.get('OLLAMA_MODEL', 'mistral').strip()
+            if model_name not in result.stdout:
+                console.print(f"[yellow]Pulling {model_name} model (this may take a minute)...[/]")
+                subprocess.run(['ollama', 'pull', model_name], check=True)
             
             self.provider = 'ollama'
-            self.model = 'mistral'
+            self.model = model_name
             self.base_url = 'http://localhost:11434'
             
             console.print(f"[yellow]✓ Using Ollama ({self.model}) - will be slower[/]")
@@ -244,13 +259,20 @@ class UnifiedLLMClient:
         
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
         
+        # Cap prediction length for local models to avoid long-running generations
+        try:
+            max_local_predict = int(os.environ.get('OLLAMA_NUM_PREDICT', '1024'))
+        except ValueError:
+            max_local_predict = 1024
+        num_predict = min(max_tokens, max_local_predict)
+        
         payload = {
             "model": self.model,
             "prompt": full_prompt,
             "stream": False,
             "options": {
                 "temperature": temperature,
-                "num_predict": max_tokens
+                "num_predict": num_predict
             }
         }
         
@@ -258,10 +280,15 @@ class UnifiedLLMClient:
             payload["format"] = "json"
         
         start_time = time.time()
+        # Allow configurable timeout for slower local generations
+        try:
+            timeout_seconds = int(os.environ.get('OLLAMA_TIMEOUT', '300'))
+        except ValueError:
+            timeout_seconds = 300
         response = requests.post(
             f"{self.base_url}/api/generate",
             json=payload,
-            timeout=120
+            timeout=timeout_seconds
         )
         response.raise_for_status()
         
@@ -328,6 +355,27 @@ class UnifiedLLMClient:
             return response.success and 'yes' in response.content.lower()
         except:
             return False
+
+    @staticmethod
+    def _normalize_env_string(value: Optional[str]) -> str:
+        """Normalize environment-provided strings to avoid Unicode smart quotes and stray wrappers.
+        Ensures ASCII-safe model names and strips surrounding quotes/spaces.
+        """
+        if not value:
+            return 'gpt-4o-mini'
+        # Replace common smart quotes with ASCII equivalents
+        normalized = (
+            value
+            .replace('\u2018', "'")  # left single quote
+            .replace('\u2019', "'")  # right single quote
+            .replace('\u201C', '"')  # left double quote
+            .replace('\u201D', '"')  # right double quote
+        )
+        # Also replace literal characters if they made it through
+        normalized = normalized.replace('‘', "'").replace('’', "'").replace('“', '"').replace('”', '"')
+        # Strip any surrounding quotes and whitespace
+        normalized = normalized.strip().strip("'\"")
+        return normalized or 'gpt-4o-mini'
 
 
 def get_llm_client() -> UnifiedLLMClient:
