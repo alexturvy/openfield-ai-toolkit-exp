@@ -128,45 +128,58 @@ class AdaptiveChunker:
                 best_matches = matches
         
         if best_matches:
-            # Process speaker turns
-            for i, (speaker, content) in enumerate(best_matches):
+            # Process speaker turns but keep Q&A pairs together
+            i = 0
+            while i < len(best_matches):
+                speaker, content = best_matches[i]
                 content = content.strip()
-                
-                # Skip empty content but keep short responses
                 if len(content) == 0:
+                    i += 1
                     continue
-                
-                # Handle continuation markers within content
+                # Normalize ellipses and whitespace
                 content = re.sub(r'\s*\.\.\.\s*', ' ', content)
                 
-                # Split long speaker turns into smaller chunks while preserving speaker context
-                if len(content) > self.max_chunk_size:
-                    sub_chunks = self._split_long_content(content, speaker)
-                    for j, sub_content in enumerate(sub_chunks):
+                # If this looks like an interviewer question, pair with the following answers
+                if self._is_interviewer(speaker) and '?' in content:
+                    combined_text = f"Q: {content}\n"
+                    respondent = None
+                    i += 1
+                    
+                    while i < len(best_matches):
+                        next_speaker, next_content = best_matches[i]
+                        next_content = next_content.strip()
+                        if self._is_interviewer(next_speaker) and '?' in next_content:
+                            break  # next question begins
+                        if len(next_content) > 0:
+                            combined_text += f"A: {next_content}\n"
+                            respondent = next_speaker
+                        i += 1
+                    
+                    chunks.append(AdaptiveChunk(
+                        text=combined_text,
+                        source_file=file_path,
+                        chunk_type="qa_pair",
+                        metadata={
+                            "interviewer": self._clean_speaker_name(speaker),
+                            "respondent": self._clean_speaker_name(respondent) if respondent else "Unknown",
+                            "is_interviewer": False,  # treat as research content
+                            "content_type": "dialogue"
+                        }
+                    ))
+                else:
+                    # For non-Q&A content, only keep if substantial to reduce noise
+                    if len(content.split()) > 20:
                         chunks.append(AdaptiveChunk(
-                            text=sub_content,
+                            text=content,
                             source_file=file_path,
                             chunk_type="speaker_turn",
                             metadata={
                                 "speaker": self._clean_speaker_name(speaker),
-                                "turn_number": i,
-                                "sub_chunk": j if len(sub_chunks) > 1 else None,
                                 "is_interviewer": self._is_interviewer(speaker),
                                 "content_type": "dialogue"
                             }
                         ))
-                else:
-                    chunks.append(AdaptiveChunk(
-                        text=content,
-                        source_file=file_path,
-                        chunk_type="speaker_turn",
-                        metadata={
-                            "speaker": self._clean_speaker_name(speaker),
-                            "turn_number": i,
-                            "is_interviewer": self._is_interviewer(speaker),
-                            "content_type": "dialogue"
-                        }
-                    ))
+                    i += 1
         else:
             # Fallback if no speaker patterns found
             return self._chunk_by_sentences(text, file_path, classification)

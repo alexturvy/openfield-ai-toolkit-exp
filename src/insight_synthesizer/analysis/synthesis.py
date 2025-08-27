@@ -3,7 +3,7 @@
 import json
 import time
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 import subprocess
 import shutil
 import platform
@@ -17,6 +17,10 @@ def ensure_ollama_ready() -> None:
     """Legacy function for backward compatibility."""
     # Now handled by UnifiedLLMClient
     pass
+
+
+if TYPE_CHECKING:
+    from ..research.goal_manager import ResearchGoalManager
 
 
 def synthesize_insights(cluster, lens: str, goal_manager: Optional['ResearchGoalManager'] = None) -> Dict:
@@ -72,43 +76,38 @@ SPEAKER DISTRIBUTION IN THIS CLUSTER:
     
     # Build research-aware prompt if goal_manager is provided
     if goal_manager:
-        # Get research-focused prompt introduction
-        research_context = goal_manager.generate_focused_synthesis_prompt(
-            [chunk.text for chunk in cluster.chunks],
-            lens
-        )
-        
-        # Identify which questions this cluster addresses
+        # Get the most relevant research question for this cluster
         cluster_text = " ".join([chunk.text for chunk in cluster.chunks])
         relevant_questions = goal_manager.identify_relevant_questions(cluster_text)
         
-        prompt = f"""{research_context}
+        if relevant_questions:
+            primary_question = goal_manager._questions[relevant_questions[0][0]]
+            prompt = f"""Analyze instructor responses about NeuroQuest that relate to this research question:
 
-{focus}
+RESEARCH QUESTION: {primary_question}
 
-{speaker_context}QUOTES TO ANALYZE:
-{chr(10).join(f'- {quote}' for quote in quotes_with_speakers)}
+INSTRUCTOR RESPONSES:
+{chr(10).join(quotes_with_speakers)}
 
-Generate a JSON response with this structure:
+Extract:
+1. How instructors answer this specific question (be specific, not generic)
+2. The range of opinions (consensus vs. divergent views)  
+3. Specific concerns or suggestions mentioned
+4. Direct quotes that best support your analysis
+
+Return JSON with:
 {{
-    "theme_name": "Clear, actionable theme name that addresses the research questions",
-    "summary": "How this theme addresses the research questions (be specific)",
-    "key_insights": ["Specific insight 1", "Specific insight 2", "Specific insight 3"],
-    "{extra_field}": "{extra_desc}",
-    "addressed_questions": [List of research question indices (0-based) this theme addresses],
-    "research_implications": "What this means for the research questions and study goals",
-    "confidence": "high/medium/low based on evidence strength",
-    "speaker_distribution": {{"speaker_name": contribution_count}},
-    "primary_contributors": ["Most active speakers for this theme"],
-    "cross_speaker_patterns": "Any patterns that emerge across different speakers",
-    "actionable_findings": ["Specific recommendation or action item 1", "Specific recommendation 2"]
-}}
-
-IMPORTANT:
-1. Focus on insights that directly address the research questions
-2. Be specific about which research questions are addressed (use 0-based indices)
-3. Provide actionable findings when possible
-4. Base confidence on the strength and consistency of evidence"""
+    "theme_name": "Specific answer to: {primary_question[:50]}...",
+    "summary": "How instructors specifically answer this research question",
+    "key_insights": ["Specific finding 1", "Specific finding 2", "Specific finding 3"],
+    "addressed_questions": [{relevant_questions[0][0]}],
+    "consensus_level": "strong/mixed/weak",
+    "direct_quotes": ["Actual instructor quote 1", "Actual instructor quote 2"],
+    "actionable_findings": ["Specific recommendation based on responses"]
+}}"""
+        else:
+            # This cluster doesn't map to research questions - skip it
+            return None
     else:
         # Original prompt for backward compatibility
         prompt = f"""You are a UX researcher. {focus} from these user quotes with speaker attribution:

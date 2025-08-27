@@ -161,7 +161,17 @@ class InsightSynthesizer:
                 for i, cluster in enumerate(clusters):
                     try:
                         progress_manager.set_stage_status(ProgressStage.INSIGHT_SYNTHESIS, f"Synthesizing cluster {cluster.cluster_id} ({i+1}/{len(clusters)})")
-                        synthesis = synthesize_insights(cluster, lens)
+                        synthesis = synthesize_insights(cluster, lens, self.goal_manager)
+                        # Skip None results (clusters not mapped to research questions)
+                        if synthesis is None:
+                            progress_manager.log_warning("Skipping cluster with no relevant research question")
+                            continue
+                        # Skip generic/non-researchy themes when using goals
+                        if self.goal_manager:
+                            theme_text = str(synthesis.get('theme_name', '')).lower()
+                            if any(noise in theme_text for noise in ['engagement', 'acknowledgment', 'affirmative', 'communication clarity']):
+                                progress_manager.log_warning(f"Skipping non-research theme: {synthesis.get('theme_name')}")
+                                continue
                         synthesized_data.append(synthesis)
                         progress_manager.log_info(f"Synthesized theme: {synthesis.get('theme_name', 'Unnamed theme')}")
                     except Exception as e:

@@ -1,6 +1,7 @@
 """Clustering analysis for semantic text chunks."""
 
 from typing import List, Tuple, Union, Optional
+import re
 from dataclasses import dataclass
 import numpy as np
 import umap
@@ -35,6 +36,13 @@ def perform_clustering(chunks: List, progress_reporter: Optional[ProgressReporte
     Returns:
         Tuple of (updated chunks, cluster objects)
     """
+    # Filter out conversational noise before clustering
+    original_chunks = chunks
+    chunks = [c for c in chunks if hasattr(c, 'text') and len(str(c.text).split()) > 10 and not re.match(r'^(yeah|yes|okay|sure|right|mhm|um|uh|thanks?|great|perfect)\.?$', str(c.text).strip(), re.I)]
+    if progress_manager:
+        from ..utils.progress_manager import ProgressStage
+        removed = len(original_chunks) - len(chunks)
+        progress_manager.log_info(f"Filtered to {len(chunks)} substantive chunks (removed {removed} noise chunks)")
     embeddings = np.array([chunk.embedding for chunk in chunks if chunk.embedding is not None])
     if len(embeddings) == 0:
         raise ValueError("No valid embeddings for clustering")
