@@ -10,6 +10,7 @@ from rich.console import Console
 from ..config import LLM_CONFIG
 from ..utils import ProgressReporter
 from ..utils.progress_reporter import ProcessType
+from ..llm.client import get_llm_client
 
 console = Console()
 
@@ -155,7 +156,6 @@ class ThemeValidator:
     
     def _extract_quotes_for_theme(self, theme_name: str, theme_summary: str, content: str, filename: str) -> List[QuoteEvidence]:
         """Extract relevant quotes for a theme from a single file using LLM."""
-        from ..llm.client import get_llm_client
         
         quotes = []
         
