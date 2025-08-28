@@ -134,50 +134,62 @@ class InsightSynthesizer:
             with progress_manager.stage_context(ProgressStage.EMBEDDING_GENERATION, len(all_chunks), "Generating embeddings") as stage_task:
                 all_chunks = generate_embeddings(all_chunks, progress_manager)
             
-            # Stage 3: Clustering
-            with progress_manager.stage_context(ProgressStage.CLUSTERING, 1, "Performing clustering analysis") as stage_task:
-                if self.goal_manager:
-                    # Use research-aware clustering
-                    from .analysis.research_clustering import create_research_aware_clusters
-                    
-                    # Extract embeddings from chunks
-                    embeddings = np.array([chunk.embedding for chunk in all_chunks])
-                    
-                    progress_manager.set_stage_status(ProgressStage.CLUSTERING, "Performing research-aware clustering")
-                    clusters = create_research_aware_clusters(
-                        all_chunks, embeddings, self.goal_manager, self.progress_reporter
-                    )
-                    progress_manager.log_info(f"Created {len(clusters)} research-aware clusters")
-                else:
-                    # Use standard clustering
-                    _, clusters = perform_clustering(all_chunks, self.progress_reporter, progress_manager)
-                    
-                progress_manager.update_stage(ProgressStage.CLUSTERING, 1)
-            
-            # Stage 4: LLM synthesis
-            with progress_manager.stage_context(ProgressStage.INSIGHT_SYNTHESIS, len(clusters), "Synthesizing insights from clusters") as stage_task:
-                synthesized_data = []
-                
-                for i, cluster in enumerate(clusters):
-                    try:
-                        progress_manager.set_stage_status(ProgressStage.INSIGHT_SYNTHESIS, f"Synthesizing cluster {cluster.cluster_id} ({i+1}/{len(clusters)})")
-                        synthesis = synthesize_insights(cluster, lens, self.goal_manager)
-                        # Skip None results (clusters not mapped to research questions)
-                        if synthesis is None:
-                            progress_manager.log_warning("Skipping cluster with no relevant research question")
-                            continue
-                        # Skip generic/non-researchy themes when using goals
-                        if self.goal_manager:
-                            theme_text = str(synthesis.get('theme_name', '')).lower()
-                            if any(noise in theme_text for noise in ['engagement', 'acknowledgment', 'affirmative', 'communication clarity']):
-                                progress_manager.log_warning(f"Skipping non-research theme: {synthesis.get('theme_name')}")
+            # Stage 3+4: Question-centric retrieval, sub-clustering, and extractive synthesis
+            results_by_question: Dict[str, List[Dict]] = {}
+            if self.goal_manager:
+                questions = self.goal_manager.goal.research_questions or []
+                with progress_manager.stage_context(ProgressStage.CLUSTERING, len(questions), "Question-centric sub-clustering") as stage_task:
+                    for q_idx, question in enumerate(questions, start=1):
+                        try:
+                            # Build relevance-filtered evidence pool for this question
+                            relevant_chunks = []
+                            for chunk in all_chunks:
+                                # Compute relevance to this specific question using the manager
+                                score = self.goal_manager.calculate_relevance_score(f"{question} :: {chunk.text}")
+                                if score >= 0.5:
+                                    relevant_chunks.append(chunk)
+                            progress_manager.log_info(f"Q{q_idx}: Collected {len(relevant_chunks)} relevant chunks (threshold=0.5)")
+
+                            if not relevant_chunks:
+                                results_by_question[question] = []
+                                progress_manager.update_stage(ProgressStage.CLUSTERING, 1)
                                 continue
-                        synthesized_data.append(synthesis)
-                        progress_manager.log_info(f"Synthesized theme: {synthesis.get('theme_name', 'Unnamed theme')}")
-                    except Exception as e:
-                        progress_manager.log_error(f"Error synthesizing cluster {cluster.cluster_id}: {e}")
-                    finally:
-                        progress_manager.update_stage(ProgressStage.INSIGHT_SYNTHESIS, 1)
+
+                            # Sub-cluster the relevant evidence
+                            _, subclusters = perform_clustering(relevant_chunks, self.progress_reporter, progress_manager)
+                            progress_manager.update_stage(ProgressStage.CLUSTERING, 1)
+
+                            # Extractive synthesis per subcluster
+                            with progress_manager.stage_context(ProgressStage.INSIGHT_SYNTHESIS, len(subclusters), f"Synthesizing answers for question {q_idx}") as synth_stage:
+                                findings_for_question: List[Dict] = []
+                                for i, cluster in enumerate(subclusters):
+                                    try:
+                                        progress_manager.set_stage_status(ProgressStage.INSIGHT_SYNTHESIS, f"Q{q_idx}: Synthesizing subcluster {i+1}/{len(subclusters)}")
+                                        synthesis = synthesize_insights(cluster, lens, self.goal_manager, research_question=question)
+                                        if synthesis and isinstance(synthesis.get('findings'), list):
+                                            findings_for_question.extend(synthesis['findings'])
+                                    finally:
+                                        progress_manager.update_stage(ProgressStage.INSIGHT_SYNTHESIS, 1)
+                                # Store aggregated findings for this question
+                                results_by_question[question] = findings_for_question
+                        except Exception as e:
+                            progress_manager.log_error(f"Error processing question {q_idx}: {e}")
+                            results_by_question[question] = []
+            else:
+                # Fallback to legacy global clustering + synthesis if no research goals provided
+                with progress_manager.stage_context(ProgressStage.CLUSTERING, 1, "Performing clustering analysis") as stage_task:
+                    _, clusters = perform_clustering(all_chunks, self.progress_reporter, progress_manager)
+                    progress_manager.update_stage(ProgressStage.CLUSTERING, 1)
+                with progress_manager.stage_context(ProgressStage.INSIGHT_SYNTHESIS, len(clusters), "Synthesizing insights from clusters") as stage_task:
+                    synthesized_data = []
+                    for i, cluster in enumerate(clusters):
+                        try:
+                            progress_manager.set_stage_status(ProgressStage.INSIGHT_SYNTHESIS, f"Synthesizing cluster {cluster.cluster_id} ({i+1}/{len(clusters)})")
+                            synthesis = synthesize_insights(cluster, lens, self.goal_manager)
+                            if synthesis:
+                                synthesized_data.append(synthesis)
+                        finally:
+                            progress_manager.update_stage(ProgressStage.INSIGHT_SYNTHESIS, 1)
 
             # Stage 5: Tension analysis
             tensions = []  # Default to empty list
@@ -189,9 +201,9 @@ class InsightSynthesizer:
                 progress_manager.log_warning(f"Tension analysis skipped due to error: {e}")
                 tensions = []  # Continue with empty tensions list
 
-            # Add research coverage validation if using goals
+            # Add research coverage validation if using goals and legacy themes
             coverage_report = None
-            if self.goal_manager and synthesized_data:
+            if self.goal_manager and 'synthesized_data' in locals() and synthesized_data:
                 console.print("\n[bold blue]Analyzing research coverage[/]")
                 from .validation.research_validator import ResearchCoverageValidator
                 
@@ -201,28 +213,34 @@ class InsightSynthesizer:
                 # Display coverage summary
                 coverage_validator.display_coverage_report(coverage_report)
             
-            # Stage 6: Theme validation
-            with progress_manager.stage_context(ProgressStage.VALIDATION, len(synthesized_data), "Validating theme coverage") as stage_task:
-                validation_result = self.validator.validate_themes(synthesized_data, file_paths, progress_manager)
-                progress_manager.update_stage(ProgressStage.VALIDATION, len(synthesized_data))
+            # Stage 6: Validation (legacy theme validation only if legacy path used)
+            validation_result = None
+            if 'synthesized_data' in locals() and synthesized_data:
+                with progress_manager.stage_context(ProgressStage.VALIDATION, len(synthesized_data), "Validating theme coverage") as stage_task:
+                    validation_result = self.validator.validate_themes(synthesized_data, file_paths, progress_manager)
+                    progress_manager.update_stage(ProgressStage.VALIDATION, len(synthesized_data))
             
             # Stage 7: Report generation
             with progress_manager.stage_context(ProgressStage.REPORT_GENERATION, 1, "Generating markdown report") as stage_task:
                 report_path = "synthesis_report.md"
                 # Generate report with all components
+                # Build report kwargs depending on path
                 report_kwargs = {
-                    'synthesized_data': synthesized_data,
                     'lens': lens,
                     'output_path': report_path,
-                    'validation_result': validation_result,
                     'tensions': tensions,
                     'research_goals': research_goals
                 }
-                
-                # Add coverage report if available
+                if self.goal_manager:
+                    report_kwargs['results_by_question'] = results_by_question
+                if validation_result:
+                    report_kwargs['validation_result'] = validation_result
                 if coverage_report:
                     report_kwargs['coverage_report'] = coverage_report
-                    
+                # Back-compat: include synthesized_data only if present
+                if 'synthesized_data' in locals():
+                    report_kwargs['synthesized_data'] = synthesized_data
+                # Add coverage report if available
                 generate_markdown_report(**report_kwargs)
                 progress_manager.update_stage(ProgressStage.REPORT_GENERATION, 1)
             
@@ -230,7 +248,8 @@ class InsightSynthesizer:
             self.progress_reporter.display_summary()
             
             progress_manager.log_success(f"Analysis complete! Report saved to {report_path}")
-            progress_manager.log_info(f"Validation: {validation_result.validation_summary}")
+            if validation_result:
+                progress_manager.log_info(f"Validation: {validation_result.validation_summary}")
             
             return report_path
             

@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from ..research.goal_manager import ResearchGoalManager
 
 
-def synthesize_insights(cluster, lens: str, goal_manager: Optional['ResearchGoalManager'] = None) -> Dict:
+def synthesize_insights(cluster, lens: str, goal_manager: Optional['ResearchGoalManager'] = None, research_question: Optional[str] = None) -> Dict:
     """
     Synthesize insights for a cluster using LLM with lens-specific focus.
     
@@ -74,8 +74,35 @@ SPEAKER DISTRIBUTION IN THIS CLUSTER:
 
 """
     
-    # Build research-aware prompt if goal_manager is provided
-    if goal_manager:
+    # Build question-driven extractive prompt if a specific research question is provided
+    if research_question:
+        prompt = f"""You are a research analyst. Your task is to answer the following research question using ONLY the provided quotes.
+
+RESEARCH QUESTION: {research_question}
+
+QUOTES:
+{chr(10).join(quotes_with_speakers)}
+
+Extract every distinct finding from the quotes that addresses the research question. For each finding, provide the speaker and the verbatim supporting quote.
+
+Return ONLY valid JSON with this structure:
+{{
+  "findings": [
+    {{
+      "finding": "A specific point, observation, or opinion from a participant.",
+      "speaker": "The name of the speaker who made this point.",
+      "supporting_quote": "The exact quote from the 'QUOTES' section that contains this finding."
+    }}
+  ]
+}}
+
+Rules:
+- Do not summarize or generalize. Extract the specific points.
+- If a single quote contains multiple distinct findings, create a separate object for each.
+- Ensure the 'supporting_quote' is an exact match from the provided text.
+"""
+    # Otherwise, build research-aware prompt if goal_manager is provided
+    elif goal_manager:
         # Get the most relevant research question for this cluster
         cluster_text = " ".join([chunk.text for chunk in cluster.chunks])
         relevant_questions = goal_manager.identify_relevant_questions(cluster_text)
@@ -148,7 +175,7 @@ Be specific and evidence-based. Focus on patterns and insights from the data."""
         raise ValueError(f"Synthesis failed: {synthesis.get('error', 'Unknown error')}")
     
     # Validation: accept new extractive schema or legacy schema
-    if 'theme_name' in synthesis and 'findings' in synthesis and isinstance(synthesis['findings'], list):
+    if 'findings' in synthesis and isinstance(synthesis['findings'], list):
         return synthesis
     legacy_required = ['theme_name', 'summary', 'key_insights']
     if all(key in synthesis for key in legacy_required):
