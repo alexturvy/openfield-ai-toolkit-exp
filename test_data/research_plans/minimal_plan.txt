@@ -1,9 +1,0 @@
-Research questions for onboarding study:
-
-1. Why do 60% of users not complete onboarding?
-2. Which steps cause the most confusion?
-3. Is the time investment too high?
-4. What would make users more likely to finish?
-5. How can we simplify without losing necessary information?
-
-Let's do 15 interviews next week.
