@@ -1,0 +1,11 @@
+Interviewer: Can you tell me about your experience with the product?
+
+Sarah: I've been using it for about 3 months now. Overall, it's helpful but the navigation is really confusing. I often can't find what I'm looking for.
+
+Interviewer: What specific navigation issues have you encountered?
+
+Sarah: Well, the menu structure doesn't make sense. Things are nested in weird places. Like, why is the settings under "Profile" instead of having its own menu item?
+
+Interviewer: That's helpful feedback. What else have you noticed?
+
+Sarah: The search function is basically useless. It never finds what I'm actually looking for. I've given up on using it.

@@ -1,0 +1,21 @@
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Local data/output
+output/
+reports/
+
+# Transcripts (example dirs; keep data out of git by default)
+neuro_transcripts/
+modo_transcripts/
+
+# Editors
+.DS_Store
+.vscode/
+.idea/
+
